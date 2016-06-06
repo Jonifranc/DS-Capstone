@@ -1,0 +1,332 @@
+---
+title: "Milestone Report"
+author: "Luciano Lattes"
+date: "May 1, 2016"
+output: html_document
+---
+
+# Text mining
+
+The goal of this project is to display that I've got used to working with the data and that I'm on track to create a text prediction algorithm based on the **blogs, news and Twitter files**.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+setwd("~/Projects/DS-Capstone")
+library(R.utils)
+library(ggplot2)
+library(RColorBrewer)
+library(wordcloud)
+library(tm)
+library(SnowballC)
+library(NLP)
+
+options(scipen=999)
+```
+
+Let's start by counting the number of lines of each file in the corpus.
+
+```{r, cache=TRUE}
+blogsText <- file("corpus/en_US/en_US.blogs.txt", "rb")
+blogsLines <- countLines(blogsText)
+blogsLinesSample <- floor(blogsLines * 0.01)
+close(blogsText)
+
+newsText <- file("corpus/en_US/en_US.news.txt", "rb")
+newsLines <- countLines(newsText)
+newsLinesSample <- floor(newsLines * 0.01)
+close(newsText)
+
+twitterText <- file("corpus/en_US/en_US.twitter.txt", "rb")
+twitterLines <- countLines(twitterText)
+twitterLinesSample <- floor(twitterLines * 0.01)
+close(twitterText)
+```
+
+**Blogs** file contains `r blogsLines` lines of text. We'll take a sample of `r blogsLinesSample` for this analysis.
+
+**News** file contains `r newsLines` lines of text. We'll take a sample of `r newsLinesSample` for this analysis.
+
+**Twitter** file contains `r twitterLines` lines of text. We'll take a sample of `r twitterLinesSample` for this analysis.
+
+I decided to take just **1%** of the data of each source for the exploratory analysis to reduce computation time. My idea for the Capstone project is to use a more significant amount of data for training a model.
+
+## Blogs data
+
+I'll read the first 1% lines of the file and create a corpus using the `tm` library. I will apply some transformations (make all text lowercase, remove punctuation, etc.) to the corpus and keep 2 versions of the data, one with english stopwords (the, and, etc.) and other without stopwords.
+
+```{r, cache=TRUE}
+blogsText <- file("corpus/en_US/en_US.blogs.txt", "r")
+
+readLines <- 0
+
+blogsTextSample <- character()
+while(readLines < blogsLinesSample) {
+  line <- readLines(blogsText, n = 1)
+  if (length(line) == 0) {
+    break
+  }
+  blogsTextSample <- c(blogsTextSample, line)
+  readLines <- readLines + 1
+}
+
+close(blogsText)
+
+blogsTextSampleCorpus <- VCorpus(VectorSource(blogsTextSample))
+blogsTextSampleCorpus <- tm_map(blogsTextSampleCorpus, content_transformer(tolower))
+blogsTextSampleCorpus <- tm_map(blogsTextSampleCorpus, removePunctuation, preserve_intra_word_dashes = TRUE)
+# Let's generate a version of the corpus without english stop words.
+blogsTextSampleCorpusNSW <- tm_map(blogsTextSampleCorpus, removeWords, stopwords("english"))
+blogsTextSampleCorpus <- tm_map(blogsTextSampleCorpus, stripWhitespace)
+blogsTextSampleCorpusNSW <- tm_map(blogsTextSampleCorpusNSW, stripWhitespace)
+
+# Document-term matrices are useful for counting words, among other things.
+documentTermMatrix <- DocumentTermMatrix(blogsTextSampleCorpus)
+documentTermMatrixNSW <- DocumentTermMatrix(blogsTextSampleCorpusNSW)
+
+# Print terms in the full corpus with more than 1500 occurrences:
+findFreqTerms(documentTermMatrix, 1500)
+# Print terms in the corpus without stop words with more than 500 occurrences:
+findFreqTerms(documentTermMatrixNSW, 500)
+```
+
+Let's take a look at the distribution of the word frequencies:
+
+```{r, cache=TRUE}
+# Check number of words with a given frequency (or higher)
+length(findFreqTerms(documentTermMatrix, 1500))
+length(findFreqTerms(documentTermMatrix, 100))
+length(findFreqTerms(documentTermMatrix, 5))
+```
+
+There are `r length(findFreqTerms(documentTermMatrix, 1)) - length(findFreqTerms(documentTermMatrix, 5))` words that appear less than five times in the corpus, which represents a `r (length(findFreqTerms(documentTermMatrix, 1)) - length(findFreqTerms(documentTermMatrix, 5))) / length(findFreqTerms(documentTermMatrix, 1)) * 100`% of the words.
+
+### Most frequent words in full blogs corpus
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+col <- brewer.pal(4, "Accent")
+wordcloud(blogsTextSampleCorpus, min.freq = 9, scale = c(5, 1), rot.per = 0.35,
+          random.color = T, max.word = 100, random.order = FALSE, colors = col)
+```
+
+### Most frequent words in blogs corpus (NO english stop words)
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+col <- brewer.pal(6, "Accent")
+wordcloud(blogsTextSampleCorpusNSW, min.freq = 9, scale = c(5, 1), rot.per = 0.35,
+          random.color = T, max.word = 100, random.order = FALSE, colors = col)
+```
+
+## N-grams in blogs file
+
+```{r, warning=FALSE, message=FALSE}
+blogsTextSampleCorpus <- VCorpus(VectorSource(blogsTextSample[1:500]))
+
+BigramTokenizer <- function(x) unlist(lapply(ngrams(words(x), 2), paste, collapse = " "), use.names = FALSE)
+TrigramTokenizer <- function(x) unlist(lapply(ngrams(words(x), 3), paste, collapse = " "), use.names = FALSE)
+
+bigrams <- TermDocumentMatrix(blogsTextSampleCorpus, control = list(tokenize = BigramTokenizer))
+trigrams <- TermDocumentMatrix(blogsTextSampleCorpus, control = list(tokenize = TrigramTokenizer))
+
+# Find bigrams with frequency of 28 or higher
+findFreqTerms(bigrams, 28)
+# Find trigrams with frequency of 3 or higher
+findFreqTerms(trigrams, 3)
+```
+
+```{r, echo=FALSE}
+rm(list = ls())
+```
+
+```{r, cache=TRUE, echo=FALSE}
+newsText <- file("corpus/en_US/en_US.news.txt", "rb")
+newsLines <- countLines(newsText)
+newsLinesSample <- floor(newsLines * 0.01)
+close(newsText)
+```
+
+## News data
+
+Let's proceed the exact same way, this time with the news data:
+
+```{r, cache=TRUE, echo=FALSE}
+newsText <- file("corpus/en_US/en_US.news.txt", "r")
+
+readLines <- 0
+
+newsTextSample <- character()
+while(readLines < newsLinesSample) {
+  line <- readLines(newsText, n = 1)
+  if (length(line) == 0) {
+    break
+  }
+  newsTextSample <- c(newsTextSample, line)
+  readLines <- readLines + 1
+}
+
+close(newsText)
+
+newsTextSampleCorpus <- VCorpus(VectorSource(newsTextSample))
+newsTextSampleCorpus <- tm_map(newsTextSampleCorpus, content_transformer(tolower))
+newsTextSampleCorpus <- tm_map(newsTextSampleCorpus, removePunctuation, preserve_intra_word_dashes = TRUE)
+# Let's generate a version of the corpus without english stop words.
+newsTextSampleCorpusNSW <- tm_map(newsTextSampleCorpus, removeWords, stopwords("english"))
+newsTextSampleCorpus <- tm_map(newsTextSampleCorpus, stripWhitespace)
+newsTextSampleCorpusNSW <- tm_map(newsTextSampleCorpusNSW, stripWhitespace)
+
+# Document-term matrices are useful for counting words, among other things.
+documentTermMatrix <- DocumentTermMatrix(newsTextSampleCorpus)
+documentTermMatrixNSW <- DocumentTermMatrix(newsTextSampleCorpusNSW)
+```
+
+```{r, cache=TRUE}
+# Print terms in the full corpus with more than 1500 occurrences:
+findFreqTerms(documentTermMatrix, 1500)
+# Print terms in the corpus without stop words with more than 500 occurrences:
+findFreqTerms(documentTermMatrixNSW, 500)
+```
+
+Let's take a look again at the distribution of the word frequencies:
+
+```{r, cache=TRUE}
+# Check number of words with a given frequency (or higher)
+length(findFreqTerms(documentTermMatrix, 1500))
+length(findFreqTerms(documentTermMatrix, 100))
+length(findFreqTerms(documentTermMatrix, 5))
+```
+
+There are `r length(findFreqTerms(documentTermMatrix, 1)) - length(findFreqTerms(documentTermMatrix, 5))` words that appear less than five times in the corpus, which represents a `r (length(findFreqTerms(documentTermMatrix, 1)) - length(findFreqTerms(documentTermMatrix, 5))) / length(findFreqTerms(documentTermMatrix, 1)) * 100`% of the words.
+
+### Most frequent words in full news corpus
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+col <- brewer.pal(1, "Accent")
+wordcloud(newsTextSampleCorpus, min.freq = 9, scale = c(5, 1), rot.per = 0.35,
+          random.color = T, max.word = 100, random.order = FALSE, colors = col)
+```
+
+### Most frequent words in news corpus (NO english stop words)
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+col <- brewer.pal(3, "Accent")
+wordcloud(newsTextSampleCorpusNSW, min.freq = 9, scale = c(5, 1), rot.per = 0.35,
+          random.color = T, max.word = 100, random.order = FALSE, colors = col)
+```
+
+## N-grams in news file
+
+```{r, warning=FALSE, message=FALSE}
+newsTextSampleCorpus <- VCorpus(VectorSource(newsTextSample[1:500]))
+
+BigramTokenizer <- function(x) unlist(lapply(ngrams(words(x), 2), paste, collapse = " "), use.names = FALSE)
+TrigramTokenizer <- function(x) unlist(lapply(ngrams(words(x), 3), paste, collapse = " "), use.names = FALSE)
+
+bigrams <- TermDocumentMatrix(newsTextSampleCorpus, control = list(tokenize = BigramTokenizer))
+trigrams <- TermDocumentMatrix(newsTextSampleCorpus, control = list(tokenize = TrigramTokenizer))
+
+# Find bigrams with frequency of 28 or higher
+findFreqTerms(bigrams, 28)
+# Find trigrams with frequency of 3 or higher
+findFreqTerms(trigrams, 3)
+```
+
+```{r, echo=FALSE}
+rm(list = ls())
+```
+
+```{r, cache=TRUE, echo=FALSE}
+twitterText <- file("corpus/en_US/en_US.twitter.txt", "rb")
+twitterLines <- countLines(twitterText)
+twitterLinesSample <- floor(twitterLines * 0.01)
+close(twitterText)
+```
+
+## Twitter data
+
+Finally, before conclusions, let's evaluate Twitter data:
+
+```{r, cache=TRUE, echo=FALSE}
+twitterText <- file("corpus/en_US/en_US.twitter.txt", "r")
+
+readLines <- 0
+
+twitterTextSample <- character()
+while(readLines < twitterLinesSample) {
+  line <- readLines(twitterText, n = 1)
+  if (length(line) == 0) {
+    break
+  }
+  twitterTextSample <- c(twitterTextSample, line)
+  readLines <- readLines + 1
+}
+
+close(twitterText)
+
+twitterTextSampleCorpus <- VCorpus(VectorSource(twitterTextSample))
+twitterTextSampleCorpus <- tm_map(twitterTextSampleCorpus, content_transformer(tolower))
+twitterTextSampleCorpus <- tm_map(twitterTextSampleCorpus, removePunctuation, preserve_intra_word_dashes = TRUE)
+# Let's generate a version of the corpus without english stop words.
+twitterTextSampleCorpusNSW <- tm_map(twitterTextSampleCorpus, removeWords, stopwords("english"))
+twitterTextSampleCorpus <- tm_map(twitterTextSampleCorpus, stripWhitespace)
+twitterTextSampleCorpusNSW <- tm_map(twitterTextSampleCorpusNSW, stripWhitespace)
+
+# Document-term matrices are useful for counting words, among other things.
+documentTermMatrix <- DocumentTermMatrix(twitterTextSampleCorpus)
+documentTermMatrixNSW <- DocumentTermMatrix(twitterTextSampleCorpusNSW)
+```
+
+```{r, cache=TRUE}
+# Print terms in the full corpus with more than 1500 occurrences:
+findFreqTerms(documentTermMatrix, 1500)
+# Print terms in the corpus without stop words with more than 500 occurrences:
+findFreqTerms(documentTermMatrixNSW, 500)
+```
+
+Let's take a look at the distribution of the word frequencies, this time with Twitter data:
+
+```{r, cache=TRUE}
+# Check number of words with a given frequency (or higher)
+length(findFreqTerms(documentTermMatrix, 1500))
+length(findFreqTerms(documentTermMatrix, 100))
+length(findFreqTerms(documentTermMatrix, 5))
+```
+
+There are `r length(findFreqTerms(documentTermMatrix, 1)) - length(findFreqTerms(documentTermMatrix, 5))` words that appear less than five times in the corpus, which represents a `r (length(findFreqTerms(documentTermMatrix, 1)) - length(findFreqTerms(documentTermMatrix, 5))) / length(findFreqTerms(documentTermMatrix, 1)) * 100`% of the words.
+
+### Most frequent words in full Twitter corpus
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+col <- brewer.pal(2, "Accent")
+wordcloud(twitterTextSampleCorpus, min.freq = 9, scale = c(5, 1), rot.per = 0.35,
+          random.color = T, max.word = 100, random.order = FALSE, colors = col)
+```
+
+### Most frequent words in Twitter corpus (NO english stop words)
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+col <- brewer.pal(5, "Accent")
+wordcloud(twitterTextSampleCorpusNSW, min.freq = 9, scale = c(5, 1), rot.per = 0.35,
+          random.color = T, max.word = 100, random.order = FALSE, colors = col)
+```
+
+## N-grams in twitter file
+
+```{r, warning=FALSE, message=FALSE}
+twitterTextSampleCorpus <- VCorpus(VectorSource(twitterTextSample[1:500]))
+
+BigramTokenizer <- function(x) unlist(lapply(ngrams(words(x), 2), paste, collapse = " "), use.names = FALSE)
+TrigramTokenizer <- function(x) unlist(lapply(ngrams(words(x), 3), paste, collapse = " "), use.names = FALSE)
+
+bigrams <- TermDocumentMatrix(twitterTextSampleCorpus, control = list(tokenize = BigramTokenizer))
+trigrams <- TermDocumentMatrix(twitterTextSampleCorpus, control = list(tokenize = TrigramTokenizer))
+
+# Find bigrams with frequency of 15 or higher
+findFreqTerms(bigrams, 15)
+# Find trigrams with frequency of 3 or higher
+findFreqTerms(trigrams, 3)
+```
+
+# Conclusions
+
+* In every case, a big majority of the words (around 80%) appear less than five times in the evaluated samples. Of the remaining 20%, stopwords have the higher frequencies, as expected.
+* The cloud of most frequent words for the three different sources of data look pretty similar, which is related to the conclusion above. When removing stopwords is easy to note some differences due to the language used in each source (Twitter is more informal, news has a particular set of words usually used in the papers) but there are lots of repeated words.
+* Most digrams and trigrams contain connectors like **and, to, a, as, of, for** due to their importance for making sentences in english. In the case of this project, it seems important to keep them in the model in order to be able to predict words properly so I'll evaluate avoiding the stopwords removal transformation. Also, n-grams in Twitter are less frequent due to the 140 characters restriction.
+* In the resulting corpuses, there are many words that seem very particular and I will evaluate different transformations to exclude them from the model. Besides profane words, which will be removed for sure, there are numbers, alfanumeric strings, foreign words, among other cases, which should be considered for removal to improve the performance of the algorithms.
