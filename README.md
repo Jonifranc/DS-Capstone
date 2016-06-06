@@ -9,3 +9,4 @@ This repository contains the work produced for the Data Science Specialization C
 * after-milestone.R: This file has working code for generating the corpus and the derived n-gram files used in the **final project**.
 * basic-preprocessing.R: This file has working code for exploring and analizing the raw (text) corpus data.
 * milestone_report.Rmd & milestone_report.html: This files were generated for the first peer-assessed assignment of the Capstone.
+* DS-Capstone-Pitch.Rpres: Final pitch for the capstone project.
