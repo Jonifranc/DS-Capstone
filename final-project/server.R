@@ -1,5 +1,8 @@
+library(R.utils)
+library(magrittr)
 library(shiny)
 library(shinyjs)
+library(stringr)
 library(tm)
 
 load_data <- function () {
